@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import subprocess
 import sys
 
 from openai import OpenAI
@@ -56,6 +57,22 @@ def main():
                 }
             }
         }
+    }, {
+        "type": "function",
+        "function": {
+            "name": "Bash",
+            "description": "Execute a shell command",
+            "parameters": {
+                "type": "object",
+                "required": ["command"],
+                "properties": {
+                    "command": {
+                        "type": "string",
+                        "description": "The shell command to execute"
+                    }
+                }
+            }
+        }
     }]
     messages = [{"role": "user", "content": args.p}]
 
@@ -83,20 +100,41 @@ def main():
             else:
                 function = tool_call.function
                 arguments = json.loads(function.arguments)
-                file_path = arguments["file_path"]
                 if function.name == "Read":
+                    file_path = arguments["file_path"]
                     try:
                         with open(file_path, "r", encoding="utf-8") as f:
                             result = f.read()
                     except OSError as e:
                         result = f"Error reading file {file_path}: {e}"
                 elif function.name == "Write":
+                    file_path = arguments["file_path"]
                     try:
                         with open(file_path, "w", encoding="utf-8") as f:
                             f.write(arguments["content"])
                         result = f"Successfully wrote to {file_path}"
                     except OSError as e:
                         result = f"Error writing file {file_path}: {e}"
+                elif function.name == "Bash":
+                    try:
+                        command_result = subprocess.run(
+                            arguments["command"],
+                            shell=True,
+                            capture_output=True,
+                            text=True,
+                        )
+                        output = []
+                        if command_result.stdout:
+                            output.append(f"stdout:\n{command_result.stdout}")
+                        if command_result.stderr:
+                            output.append(f"stderr:\n{command_result.stderr}")
+                        if command_result.returncode != 0:
+                            output.append(
+                                f"Command exited with status "
+                                f"{command_result.returncode}")
+                        result = "\n".join(output) or "Command completed with no output."
+                    except OSError as e:
+                        result = f"Error executing command: {e}"
                 else:
                     result = f"Error: unsupported tool {function.name!r}"
 
