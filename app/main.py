@@ -73,7 +73,7 @@ def main():
     # [ChatCompletionMessageFunctionToolCall(id='toolu_bdrk_018E8SmwsTrHKnhH1U7VR9M6', function=Function(arguments='{"file_path": "blueberry.py"}', name='Read'), type='function', index=0)]
 
     # TODO: Uncomment the following line to pass the first stage
-    print(chat.choices[0].message.content)
+    # print(chat.choices[0].message.content)
 
 
 if __name__ == "__main__":
