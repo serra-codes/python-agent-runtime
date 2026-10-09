@@ -32,3 +32,10 @@ Note: This section is for stages 2 and beyond.
    `app/main.py`.
 3. Run `codecrafters submit` to submit your solution to CodeCrafters. Test
    output will be streamed to your terminal.
+
+### Slash commands
+
+Prompts beginning with a slash load a skill from
+`.claude/skills/<name>/SKILL.md`. The skill name and description from each
+skill's frontmatter are included in the system message, while only the invoked
+skill's body is sent as the user message.

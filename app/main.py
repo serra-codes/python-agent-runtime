@@ -3,12 +3,91 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 from openai import OpenAI
 
 API_KEY = os.getenv("OPENROUTER_API_KEY")
 BASE_URL = os.getenv("OPENROUTER_BASE_URL",
                      default="https://openrouter.ai/api/v1")
+
+
+def parse_skill_metadata(frontmatter, path):
+    metadata = {}
+    for line in frontmatter.splitlines():
+        key, delimiter, value = line.partition(":")
+        if delimiter and key.strip() in {"name", "description"}:
+            metadata[key.strip()] = value.strip().strip("'\"")
+
+    if not metadata.get("name") or not metadata.get("description"):
+        raise ValueError(f"Skill file must define name and description: {path}")
+
+    return metadata
+
+
+def read_skill_metadata(path):
+    with path.open(encoding="utf-8") as skill_file:
+        if skill_file.readline().strip() != "---":
+            raise ValueError(f"Skill file is missing YAML frontmatter: {path}")
+
+        frontmatter = []
+        for line in skill_file:
+            if line.strip() == "---":
+                return parse_skill_metadata("".join(frontmatter), path)
+            frontmatter.append(line)
+
+    raise ValueError(f"Skill file has unterminated YAML frontmatter: {path}")
+
+
+def read_skill_body(path):
+    with path.open(encoding="utf-8") as skill_file:
+        if skill_file.readline().strip() != "---":
+            raise ValueError(f"Skill file is missing YAML frontmatter: {path}")
+
+        for line in skill_file:
+            if line.strip() == "---":
+                return skill_file.read().strip()
+
+    raise ValueError(f"Skill file has unterminated YAML frontmatter: {path}")
+
+
+def prepare_messages(prompt):
+    stripped_prompt = prompt.strip()
+    if not stripped_prompt.startswith("/"):
+        return [{"role": "user", "content": prompt}]
+
+    command_parts = stripped_prompt[1:].split(maxsplit=1)
+    if not command_parts:
+        raise ValueError("A skill name is required after '/'")
+    command = command_parts[0]
+    skills_dir = Path.cwd() / ".claude" / "skills"
+    skill_files = sorted(skills_dir.glob("*/SKILL.md"))
+    skills = []
+    for skill_file in skill_files:
+        metadata = read_skill_metadata(skill_file)
+        skills.append((skill_file, metadata))
+
+    selected = next(
+        (item for item in skills if item[0].parent.name == command),
+        None,
+    )
+    if selected is None:
+        raise FileNotFoundError(
+            f"Skill {command!r} not found in {skills_dir}")
+
+    skill_file, _ = selected
+    skill_body = read_skill_body(skill_file)
+    skill_list = "\n".join(
+        f"- {metadata['name']}: {metadata['description']}"
+        for _, metadata in skills
+    )
+    return [
+        {
+            "role": "system",
+            "content": f"You have access to the following skills:\n\n{skill_list}",
+        },
+        {"role": "user", "content": skill_body},
+    ]
 
 
 def main():
@@ -74,7 +153,7 @@ def main():
             }
         }
     }]
-    messages = [{"role": "user", "content": args.p}]
+    messages = prepare_messages(args.p)
 
     while True:
         response = client.chat.completions.create(
