@@ -3,7 +3,7 @@ import json
 import os
 import sys
 
-from openai import OpenAI
+from openai import OpenAI, chat
 
 API_KEY = os.getenv("OPENROUTER_API_KEY")
 BASE_URL = os.getenv("OPENROUTER_BASE_URL",
@@ -44,6 +44,7 @@ def main():
 
     if not chat.choices or len(chat.choices) == 0:
         raise RuntimeError("no choices in response")
+    print(chat.choices[0].message.content)
 
     if chat.choices[0].message.tool_calls:
         tool_call = chat.choices[0].message.tool_calls[0]
