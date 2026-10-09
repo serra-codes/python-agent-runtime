@@ -42,13 +42,13 @@ def main():
         }]
     )
 
-    # if not chat.choices or len(chat.choices) == 0:
-    #     raise RuntimeError("no choices in response")
-    # # print(chat.choices[0].message.content)
-    # print(chat.choices[0].message.tool_calls)
+    if not chat.choices:
+        raise RuntimeError("no choices in response")
 
-    if chat.choices[0].message.tool_calls:
-        tool_call = chat.choices[0].message.tool_calls[0]
+    message = chat.choices[0].message
+
+    if message.tool_calls:
+        tool_call = message.tool_calls[0]
         if getattr(tool_call, "type", None) == "function":
             function = getattr(tool_call, "function", None)
             if function is not None and getattr(function, "name", None) == "Read":
@@ -67,6 +67,8 @@ def main():
                 print("No valid tool call found in the response.", file=sys.stderr)
         else:
             print("No valid tool call found in the response.", file=sys.stderr)
+    elif message.content is not None:
+        sys.stdout.write(message.content)
 
     # You can use print statements as follows for debugging, they'll be visible when running tests.
     print("Logs from your program will appear here!", file=sys.stderr)
