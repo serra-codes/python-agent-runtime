@@ -60,6 +60,11 @@ def main():
     # You can use print statements as follows for debugging, they'll be visible when running tests.
     print("Logs from your program will appear here!", file=sys.stderr)
 
+    message = chat.choices[0].message
+    if message.content is None:
+        print("", end="")
+    else:
+        print(message.content)
     # TODO: Uncomment the following line to pass the first stage
     print(chat.choices[0].message.content)
 
