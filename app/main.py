@@ -44,7 +44,6 @@ def main():
 
     if not chat.choices or len(chat.choices) == 0:
         raise RuntimeError("no choices in response")
-    print(chat.choices[0].message.tool_calls)
 
     if chat.choices[0].message.tool_calls:
         tool_call = chat.choices[0].message.tool_calls[0]
@@ -60,7 +59,8 @@ def main():
                         file_contents = f.read()
                     print(f"Contents of {file_path}:\n{file_contents}")
                 except Exception as e:
-                    print(f"Error reading file {file_path}: {e}", file=sys.stderr)
+                    print(
+                        f"Error reading file {file_path}: {e}", file=sys.stderr)
             else:
                 print("No valid tool call found in the response.", file=sys.stderr)
         else:
@@ -69,11 +69,9 @@ def main():
     # You can use print statements as follows for debugging, they'll be visible when running tests.
     print("Logs from your program will appear here!", file=sys.stderr)
 
-    message = chat.choices[0].message
-    if message.content is None:
-        print("", end="")
-    else:
-        print(message.content)
+    # message = chat.choices[0].message
+    # [ChatCompletionMessageFunctionToolCall(id='toolu_bdrk_018E8SmwsTrHKnhH1U7VR9M6', function=Function(arguments='{"file_path": "blueberry.py"}', name='Read'), type='function', index=0)]
+
     # TODO: Uncomment the following line to pass the first stage
     print(chat.choices[0].message.content)
 
