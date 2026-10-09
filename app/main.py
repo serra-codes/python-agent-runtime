@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import sys
 
@@ -44,16 +45,24 @@ def main():
     if not chat.choices or len(chat.choices) == 0:
         raise RuntimeError("no choices in response")
     print(chat.choices[0].message.tool_calls)
+
     if chat.choices[0].message.tool_calls:
         tool_call = chat.choices[0].message.tool_calls[0]
-        if tool_call["type"] == "function" and tool_call["function"]["name"] == "Read":
-            file_path = tool_call["function"]["arguments"]["file_path"]
-            try:
-                with open(file_path, "r") as f:
-                    file_contents = f.read()
-                print(f"Contents of {file_path}:\n{file_contents}")
-            except Exception as e:
-                print(f"Error reading file {file_path}: {e}", file=sys.stderr)
+        if getattr(tool_call, "type", None) == "function":
+            function = getattr(tool_call, "function", None)
+            if function is not None and getattr(function, "name", None) == "Read":
+                arguments = getattr(function, "arguments", {})
+                if isinstance(arguments, str):
+                    arguments = json.loads(arguments)
+                file_path = arguments["file_path"]
+                try:
+                    with open(file_path, "r") as f:
+                        file_contents = f.read()
+                    print(f"Contents of {file_path}:\n{file_contents}")
+                except Exception as e:
+                    print(f"Error reading file {file_path}: {e}", file=sys.stderr)
+            else:
+                print("No valid tool call found in the response.", file=sys.stderr)
         else:
             print("No valid tool call found in the response.", file=sys.stderr)
 
