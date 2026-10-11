@@ -71,14 +71,20 @@ def substitute_skill_arguments(skill_body, arguments):
     )
 
 
-def prepare_messages(prompt):
-    stripped_prompt = prompt.strip()
-    skills_dir = Path.cwd() / ".claude" / "skills"
+def discover_skills(skills_dir):
     skill_files = sorted(skills_dir.glob("*/SKILL.md"))
     skills = []
     for skill_file in skill_files:
         metadata = read_skill_metadata(skill_file)
         skills.append((skill_file, metadata))
+    return skills
+
+
+def prepare_messages(prompt, skills=None):
+    stripped_prompt = prompt.strip()
+    skills_dir = Path.cwd() / ".claude" / "skills"
+    if skills is None:
+        skills = discover_skills(skills_dir)
 
     skill_list = "\n".join(
         f"- {metadata['name']}: {metadata['description']}"
@@ -88,7 +94,11 @@ def prepare_messages(prompt):
     if skills:
         messages.append({
             "role": "system",
-            "content": f"You have access to the following skills:\n\n{skill_list}",
+            "content": (
+                f"You have access to the following skills:\n\n{skill_list}\n\n"
+                "If a skill matches the user's request, call the Skill tool "
+                "with its name and follow the instructions it returns."
+            ),
         })
 
     if not stripped_prompt.startswith("/"):
@@ -186,8 +196,32 @@ def main():
                 }
             }
         }
+    }, {
+        "type": "function",
+        "function": {
+            "name": "Skill",
+            "description": "Load a skill's instructions into the conversation",
+            "parameters": {
+                "type": "object",
+                "required": ["name"],
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "The name of the skill to use"
+                    },
+                    "args": {
+                        "type": "string",
+                        "description": "Optional arguments for the skill"
+                    }
+                }
+            }
+        }
     }]
-    messages = prepare_messages(args.p)
+    skills = discover_skills(Path.cwd() / ".claude" / "skills")
+    skills_by_name = {
+        metadata["name"]: skill_file for skill_file, metadata in skills
+    }
+    messages = prepare_messages(args.p, skills)
 
     while True:
         response = client.chat.completions.create(
@@ -248,6 +282,18 @@ def main():
                         result = "\n".join(output) or "Command completed with no output."
                     except OSError as e:
                         result = f"Error executing command: {e}"
+                elif function.name == "Skill":
+                    skill_name = arguments["name"]
+                    skill_file = skills_by_name.get(skill_name)
+                    if skill_file is None:
+                        result = f"Error: skill {skill_name!r} not found"
+                    else:
+                        skill_body = read_skill_body(skill_file)
+                        skill_arguments = arguments.get("args", "").split()
+                        result = substitute_skill_arguments(
+                            skill_body,
+                            skill_arguments,
+                        )
                 else:
                     result = f"Error: unsupported tool {function.name!r}"
 

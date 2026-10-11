@@ -44,3 +44,7 @@ split on whitespace and substituted into `$ARGUMENTS`, `$ARGUMENTS[n]`, and
 Multiple skills can be stacked at the start of a prompt; the first token that
 isn't a known skill ends the stack, and that token plus everything after it is
 used as the arguments for each expanded skill.
+
+For plain-language prompts, the model can also load a matching skill by calling
+the `Skill` tool. The tool returns that skill's body with any supplied arguments
+substituted into its placeholders.
