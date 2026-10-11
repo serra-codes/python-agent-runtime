@@ -17,7 +17,7 @@ def parse_skill_metadata(frontmatter, path):
     metadata = {}
     for line in frontmatter.splitlines():
         key, delimiter, value = line.partition(":")
-        if delimiter and key.strip() in {"name", "description"}:
+        if delimiter and key.strip() in {"name", "description", "context"}:
             metadata[key.strip()] = value.strip().strip("'\"")
 
     if not metadata.get("name") or not metadata.get("description"):
@@ -134,6 +134,100 @@ def prepare_messages(prompt, skills=None):
     return messages
 
 
+def run_agent(client, tools, skills_by_name, messages):
+    while True:
+        response = client.chat.completions.create(
+            model="anthropic/claude-haiku-4.5",
+            messages=messages,
+            tools=tools,
+        )
+
+        if not response.choices:
+            raise RuntimeError("no choices in response")
+
+        message = response.choices[0].message
+        messages.append(message.model_dump(exclude_none=True))
+
+        if not message.tool_calls:
+            return message.content or ""
+
+        for tool_call in message.tool_calls:
+            if tool_call.type != "function":
+                result = f"Error: unsupported tool call type {tool_call.type!r}"
+            else:
+                function = tool_call.function
+                arguments = json.loads(function.arguments)
+                if function.name == "Read":
+                    file_path = arguments["file_path"]
+                    try:
+                        with open(file_path, "r", encoding="utf-8") as f:
+                            result = f.read()
+                    except OSError as e:
+                        result = f"Error reading file {file_path}: {e}"
+                elif function.name == "Write":
+                    file_path = arguments["file_path"]
+                    try:
+                        with open(file_path, "w", encoding="utf-8") as f:
+                            f.write(arguments["content"])
+                        result = f"Successfully wrote to {file_path}"
+                    except OSError as e:
+                        result = f"Error writing file {file_path}: {e}"
+                elif function.name == "Bash":
+                    try:
+                        command_result = subprocess.run(
+                            arguments["command"],
+                            shell=True,
+                            capture_output=True,
+                            text=True,
+                        )
+                        output = []
+                        if command_result.stdout:
+                            output.append(f"stdout:\n{command_result.stdout}")
+                        if command_result.stderr:
+                            output.append(f"stderr:\n{command_result.stderr}")
+                        if command_result.returncode != 0:
+                            output.append(
+                                f"Command exited with status "
+                                f"{command_result.returncode}")
+                        result = "\n".join(output) or "Command completed with no output."
+                    except OSError as e:
+                        result = f"Error executing command: {e}"
+                elif function.name == "Skill":
+                    skill_name = arguments["name"]
+                    selected = skills_by_name.get(skill_name)
+                    if selected is None:
+                        result = f"Error: skill {skill_name!r} not found"
+                    else:
+                        skill_file, metadata = selected
+                        skill_body = read_skill_body(skill_file)
+                        skill_arguments = arguments.get("args", "").split()
+                        skill_body = substitute_skill_arguments(
+                            skill_body,
+                            skill_arguments,
+                        )
+                        if metadata.get("context") == "fork":
+                            subagent_answer = run_agent(
+                                client,
+                                tools,
+                                skills_by_name,
+                                [{"role": "user", "content": skill_body}],
+                            )
+                            result = (
+                                f"Skill {skill_name} ran in a separate context "
+                                f"and returned: {subagent_answer}"
+                            )
+                        else:
+                            result = skill_body
+                else:
+                    result = f"Error: unsupported tool {function.name!r}"
+
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": result,
+            })
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("-p", required=True)
@@ -219,89 +313,12 @@ def main():
     }]
     skills = discover_skills(Path.cwd() / ".claude" / "skills")
     skills_by_name = {
-        metadata["name"]: skill_file for skill_file, metadata in skills
+        metadata["name"]: (skill_file, metadata)
+        for skill_file, metadata in skills
     }
     messages = prepare_messages(args.p, skills)
-
-    while True:
-        response = client.chat.completions.create(
-            model="anthropic/claude-haiku-4.5",
-            messages=messages,
-            tools=tools,
-        )
-
-        if not response.choices:
-            raise RuntimeError("no choices in response")
-
-        message = response.choices[0].message
-        messages.append(message.model_dump(exclude_none=True))
-
-        if not message.tool_calls:
-            if message.content is not None:
-                sys.stdout.write(message.content)
-            return
-
-        for tool_call in message.tool_calls:
-            if tool_call.type != "function":
-                result = f"Error: unsupported tool call type {tool_call.type!r}"
-            else:
-                function = tool_call.function
-                arguments = json.loads(function.arguments)
-                if function.name == "Read":
-                    file_path = arguments["file_path"]
-                    try:
-                        with open(file_path, "r", encoding="utf-8") as f:
-                            result = f.read()
-                    except OSError as e:
-                        result = f"Error reading file {file_path}: {e}"
-                elif function.name == "Write":
-                    file_path = arguments["file_path"]
-                    try:
-                        with open(file_path, "w", encoding="utf-8") as f:
-                            f.write(arguments["content"])
-                        result = f"Successfully wrote to {file_path}"
-                    except OSError as e:
-                        result = f"Error writing file {file_path}: {e}"
-                elif function.name == "Bash":
-                    try:
-                        command_result = subprocess.run(
-                            arguments["command"],
-                            shell=True,
-                            capture_output=True,
-                            text=True,
-                        )
-                        output = []
-                        if command_result.stdout:
-                            output.append(f"stdout:\n{command_result.stdout}")
-                        if command_result.stderr:
-                            output.append(f"stderr:\n{command_result.stderr}")
-                        if command_result.returncode != 0:
-                            output.append(
-                                f"Command exited with status "
-                                f"{command_result.returncode}")
-                        result = "\n".join(output) or "Command completed with no output."
-                    except OSError as e:
-                        result = f"Error executing command: {e}"
-                elif function.name == "Skill":
-                    skill_name = arguments["name"]
-                    skill_file = skills_by_name.get(skill_name)
-                    if skill_file is None:
-                        result = f"Error: skill {skill_name!r} not found"
-                    else:
-                        skill_body = read_skill_body(skill_file)
-                        skill_arguments = arguments.get("args", "").split()
-                        result = substitute_skill_arguments(
-                            skill_body,
-                            skill_arguments,
-                        )
-                else:
-                    result = f"Error: unsupported tool {function.name!r}"
-
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tool_call.id,
-                "content": result,
-            })
+    answer = run_agent(client, tools, skills_by_name, messages)
+    sys.stdout.write(answer)
 
 
 if __name__ == "__main__":

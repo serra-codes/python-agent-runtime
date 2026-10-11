@@ -48,3 +48,7 @@ used as the arguments for each expanded skill.
 For plain-language prompts, the model can also load a matching skill by calling
 the `Skill` tool. The tool returns that skill's body with any supplied arguments
 substituted into its placeholders.
+
+Skills with `context: fork` in their frontmatter run in a separate agent
+conversation that starts with only the skill body. The subagent's final answer
+is returned to the main conversation as the result of the `Skill` tool.
