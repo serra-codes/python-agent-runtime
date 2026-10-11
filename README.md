@@ -41,3 +41,6 @@ skill's frontmatter are included in the system message, while only the invoked
 skill's body is sent as the user message. Arguments after the skill name are
 split on whitespace and substituted into `$ARGUMENTS`, `$ARGUMENTS[n]`, and
 `$n` placeholders in the skill body, where `n` is a zero-based argument index.
+Multiple skills can be stacked at the start of a prompt; the first token that
+isn't a known skill ends the stack, and that token plus everything after it is
+used as the arguments for each expanded skill.

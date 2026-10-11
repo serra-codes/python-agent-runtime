@@ -95,23 +95,32 @@ def prepare_messages(prompt):
         messages.append({"role": "user", "content": prompt})
         return messages
 
-    command_parts = stripped_prompt[1:].split(maxsplit=1)
-    if not command_parts:
-        raise ValueError("A skill name is required after '/'")
-    command = command_parts[0]
-    selected = next(
-        (item for item in skills if item[0].parent.name == command),
-        None,
-    )
-    if selected is None:
-        raise FileNotFoundError(
-            f"Skill {command!r} not found in {skills_dir}")
+    prompt_tokens = stripped_prompt.split()
+    expanded_skills = []
+    argument_start = 0
+    for index, token in enumerate(prompt_tokens):
+        if not token.startswith("/"):
+            break
+        command = token[1:]
+        selected = next(
+            (item for item in skills if item[0].parent.name == command),
+            None,
+        )
+        if selected is None:
+            if not expanded_skills:
+                if not command:
+                    raise ValueError("A skill name is required after '/'")
+                raise FileNotFoundError(
+                    f"Skill {command!r} not found in {skills_dir}")
+            break
+        expanded_skills.append(selected)
+        argument_start = index + 1
 
-    skill_file, _ = selected
-    skill_body = read_skill_body(skill_file)
-    arguments = command_parts[1].split() if len(command_parts) > 1 else []
-    skill_body = substitute_skill_arguments(skill_body, arguments)
-    messages.append({"role": "user", "content": skill_body})
+    arguments = prompt_tokens[argument_start:]
+    for skill_file, _ in expanded_skills:
+        skill_body = read_skill_body(skill_file)
+        skill_body = substitute_skill_arguments(skill_body, arguments)
+        messages.append({"role": "user", "content": skill_body})
     return messages
 
 
