@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -51,6 +52,25 @@ def read_skill_body(path):
     raise ValueError(f"Skill file has unterminated YAML frontmatter: {path}")
 
 
+def substitute_skill_arguments(skill_body, arguments):
+    all_arguments = " ".join(arguments)
+
+    def replace_placeholder(match):
+        if match.group(1) is not None:
+            index = int(match.group(1))
+            return arguments[index] if index < len(arguments) else ""
+        if match.group(2) is not None:
+            index = int(match.group(2))
+            return arguments[index] if index < len(arguments) else ""
+        return all_arguments
+
+    return re.sub(
+        r"\$ARGUMENTS(?:\[(\d+)\])?|\$(\d+)",
+        replace_placeholder,
+        skill_body,
+    )
+
+
 def prepare_messages(prompt):
     stripped_prompt = prompt.strip()
     skills_dir = Path.cwd() / ".claude" / "skills"
@@ -89,6 +109,8 @@ def prepare_messages(prompt):
 
     skill_file, _ = selected
     skill_body = read_skill_body(skill_file)
+    arguments = command_parts[1].split() if len(command_parts) > 1 else []
+    skill_body = substitute_skill_arguments(skill_body, arguments)
     messages.append({"role": "user", "content": skill_body})
     return messages
 

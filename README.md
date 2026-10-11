@@ -38,4 +38,6 @@ Note: This section is for stages 2 and beyond.
 Prompts beginning with a slash load a skill from
 `.claude/skills/<name>/SKILL.md`. The skill name and description from each
 skill's frontmatter are included in the system message, while only the invoked
-skill's body is sent as the user message.
+skill's body is sent as the user message. Arguments after the skill name are
+split on whitespace and substituted into `$ARGUMENTS`, `$ARGUMENTS[n]`, and
+`$n` placeholders in the skill body, where `n` is a zero-based argument index.
