@@ -53,13 +53,6 @@ def read_skill_body(path):
 
 def prepare_messages(prompt):
     stripped_prompt = prompt.strip()
-    if not stripped_prompt.startswith("/"):
-        return [{"role": "user", "content": prompt}]
-
-    command_parts = stripped_prompt[1:].split(maxsplit=1)
-    if not command_parts:
-        raise ValueError("A skill name is required after '/'")
-    command = command_parts[0]
     skills_dir = Path.cwd() / ".claude" / "skills"
     skill_files = sorted(skills_dir.glob("*/SKILL.md"))
     skills = []
@@ -67,6 +60,25 @@ def prepare_messages(prompt):
         metadata = read_skill_metadata(skill_file)
         skills.append((skill_file, metadata))
 
+    skill_list = "\n".join(
+        f"- {metadata['name']}: {metadata['description']}"
+        for _, metadata in skills
+    )
+    messages = []
+    if skills:
+        messages.append({
+            "role": "system",
+            "content": f"You have access to the following skills:\n\n{skill_list}",
+        })
+
+    if not stripped_prompt.startswith("/"):
+        messages.append({"role": "user", "content": prompt})
+        return messages
+
+    command_parts = stripped_prompt[1:].split(maxsplit=1)
+    if not command_parts:
+        raise ValueError("A skill name is required after '/'")
+    command = command_parts[0]
     selected = next(
         (item for item in skills if item[0].parent.name == command),
         None,
@@ -77,17 +89,8 @@ def prepare_messages(prompt):
 
     skill_file, _ = selected
     skill_body = read_skill_body(skill_file)
-    skill_list = "\n".join(
-        f"- {metadata['name']}: {metadata['description']}"
-        for _, metadata in skills
-    )
-    return [
-        {
-            "role": "system",
-            "content": f"You have access to the following skills:\n\n{skill_list}",
-        },
-        {"role": "user", "content": skill_body},
-    ]
+    messages.append({"role": "user", "content": skill_body})
+    return messages
 
 
 def main():
